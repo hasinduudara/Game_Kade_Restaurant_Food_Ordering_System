@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Image, TouchableOpacity, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import "../global.css";
 
 const { width } = Dimensions.get('window');
@@ -13,12 +14,16 @@ export default function WelcomeScreen() {
     };
 
     return (
-        <View className="flex-1 bg-[#FF4200]">
+        <LinearGradient
+            colors={['#D93800', '#FF6F00', '#D93800']}
+            locations={[0, 0.5, 1]}
+            className="flex-1"
+        >
 
-            <SafeAreaView className="flex-1 justify-between items-center px-6 py-4">
+            <SafeAreaView className="flex-1 justify-between items-center px-4 py-6">
                 <Animated.View
                     entering={FadeInDown.delay(100).springify()}
-                    className="items-center mt-4"
+                    className="items-center"
                 >
                     <View className="bg-white/20 px-6 py-2 rounded-full mb-6 border border-white/10">
                         <Text className="text-white font-bold tracking-wider text-xs uppercase">
@@ -51,7 +56,7 @@ export default function WelcomeScreen() {
                         className="w-full bg-[#FFF0E5] py-4 rounded-3xl items-center justify-center shadow-lg"
                     >
                         <Text className="text-[#FF4200] font-bold text-lg">
-                            Start Your Journey
+                            Start App Now
                         </Text>
                     </TouchableOpacity>
 
@@ -60,6 +65,6 @@ export default function WelcomeScreen() {
                     </Text>
                 </Animated.View>
             </SafeAreaView>
-        </View>
+        </LinearGradient>
     );
 }
