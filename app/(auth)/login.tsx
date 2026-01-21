@@ -29,7 +29,7 @@ import {
     sendPasswordResetEmail,
     updateProfile
 } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../services/firebaseConfig';
 import "../../global.css";
 
@@ -84,12 +84,34 @@ export default function LoginScreen() {
     }, [fbResponse]);
 
     // Common function for Social Sign In
-    const socialSignIn = (credential: any, providerName: string) => {
+    const socialSignIn = async (credential: any, providerName: string) => {
         setLoading(true);
-        signInWithCredential(auth, credential)
-            .then(() => router.replace('/(tabs)/home'))
-            .catch((error) => Alert.alert(`${providerName} Error`, error.message))
-            .finally(() => setLoading(false));
+        try {
+            const result = await signInWithCredential(auth, credential);
+            const user = result.user;
+
+            // Database එකේ මේ User දැනටමත් ඉන්නවද බලමු
+            const userDocRef = doc(db, "users", user.uid);
+            const userDoc = await getDoc(userDocRef);
+
+            if (!userDoc.exists()) {
+                // User කෙනෙක් නැත්නම් විතරක් අලුතෙන් Save කරන්න
+                await setDoc(userDocRef, {
+                    uid: user.uid,
+                    fullName: user.displayName || "Unknown User",
+                    email: user.email,
+                    phone: "", // Social Login වලින් ෆෝන් නම්බර් එක එන්නේ නෑ
+                    createdAt: new Date().toISOString()
+                });
+            }
+
+            router.replace('/(tabs)/home');
+
+        } catch (error: any) {
+            Alert.alert(`${providerName} Error`, error.message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     // --- MANUAL EMAIL/PASSWORD AUTH ---
