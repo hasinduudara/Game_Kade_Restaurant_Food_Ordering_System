@@ -15,7 +15,7 @@ import "../../global.css"; // NativeWind CSS
 
 // --- Sample Data (උදාහරණ දත්ත) ---
 const categories = [
-    { id: 1, name: 'Rice', icon: 'rice-bowl' },
+    { id: 1, name: 'Rice', icon: 'restaurant' },
     { id: 2, name: 'Kottu', icon: 'fast-food' },
     { id: 3, name: 'Burgers', icon: 'nutrition' },
     { id: 4, name: 'Drinks', icon: 'beer' },
@@ -53,7 +53,6 @@ export default function HomeScreen() {
 
     return (
         <View className="flex-1 bg-gray-50">
-            <StatusBar barStyle="dark-content" />
 
             {/* --- Header Section --- */}
             <View className="bg-white px-6 pt-12 pb-4 shadow-sm z-10">
