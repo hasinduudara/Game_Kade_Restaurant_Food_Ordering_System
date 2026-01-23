@@ -6,47 +6,12 @@ import {
     ScrollView,
     Image,
     TouchableOpacity,
-    StatusBar
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import "../../global.css"; // NativeWind CSS
 
-// --- Sample Data (උදාහරණ දත්ත) ---
-const categories = [
-    { id: 1, name: 'Rice', icon: 'restaurant' },
-    { id: 2, name: 'Kottu', icon: 'fast-food' },
-    { id: 3, name: 'Burgers', icon: 'nutrition' },
-    { id: 4, name: 'Drinks', icon: 'beer' },
-];
-
-const foodItems = [
-    {
-        id: 1,
-        name: 'Chicken Fried Rice',
-        price: 'Rs. 1200',
-        rating: 4.8,
-        image: require('../../assets/images/burger.png'), // දැනට තියෙන පින්තූරයක් දැම්මා
-        description: 'Spicy Sri Lankan style fried rice with chili paste.'
-    },
-    {
-        id: 2,
-        name: 'Cheese Kottu',
-        price: 'Rs. 1500',
-        rating: 4.9,
-        image: require('../../assets/images/burger.png'),
-        description: 'Creamy cheese kottu with roast chicken.'
-    },
-    {
-        id: 3,
-        name: 'Double Burger',
-        price: 'Rs. 950',
-        rating: 4.5,
-        image: require('../../assets/images/burger.png'),
-        description: 'Double patty burger with extra cheese.'
-    }
-];
+import { categories, foodItems } from '../../constants/menuData';
 
 export default function HomeScreen() {
     const [activeCategory, setActiveCategory] = useState('Rice');
@@ -117,6 +82,7 @@ export default function HomeScreen() {
                         showsHorizontalScrollIndicator={false}
                         contentContainerStyle={{ paddingHorizontal: 24, gap: 12 }}
                     >
+                        {/* menuData.ts එකෙන් එන categories ටික මෙතන loop වෙනවා */}
                         {categories.map((cat) => (
                             <TouchableOpacity
                                 key={cat.id}
@@ -151,7 +117,7 @@ export default function HomeScreen() {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Food Cards */}
+                    {/* menuData.ts එකෙන් එන foodItems ටික මෙතන loop වෙනවා */}
                     {foodItems.map((item) => (
                         <TouchableOpacity
                             key={item.id}
