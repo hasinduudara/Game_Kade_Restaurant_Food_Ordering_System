@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, Dimensions } from 'react-native';
-import { WebView } from 'react-native-webview'; // 👈 MapView වෙනුවට WebView
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { WebView } from 'react-native-webview';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,11 +9,13 @@ import { useAuth } from '../context/AuthContext';
 
 export default function MapScreen() {
     const { refreshUserData } = useAuth();
+
+    // State Variables
     const [location, setLocation] = useState<any>(null);
     const [address, setAddress] = useState("Locating...");
     const [saving, setSaving] = useState(false);
 
-    // Map එක පටන් ගන්න තැන (Default: Colombo)
+    // Get User's Current Location on Mount (Default Location: Colombo)
     const [initialRegion, setInitialRegion] = useState({ lat: 6.9271, lng: 79.8612 });
     const [mapReady, setMapReady] = useState(false);
 
@@ -22,47 +24,70 @@ export default function MapScreen() {
             let { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
                 Alert.alert("Permission Denied", "Allow location access to find you.");
-                setMapReady(true); // Default location එකෙන් පටන් ගන්නවා
+                setMapReady(true);
                 return;
             }
 
             let currentLocation = await Location.getCurrentPositionAsync({});
+
+            // 1. Set Initial Region for Map Centering
             setInitialRegion({
                 lat: currentLocation.coords.latitude,
                 lng: currentLocation.coords.longitude
             });
 
-            // මුලින්ම Address එක හොයනවා
+            // 2. Working Location State
+            setLocation({
+                lat: currentLocation.coords.latitude,
+                lng: currentLocation.coords.longitude
+            });
+
+            // 3. Search Address from OSM
             fetchAddressFromOSM(currentLocation.coords.latitude, currentLocation.coords.longitude);
             setMapReady(true);
         })();
     }, []);
 
+    // Add User-Agent Header
     const fetchAddressFromOSM = async (lat: number, lng: number) => {
         try {
             setAddress("Checking...");
+
+            // Send Request to OSM Nominatim API
             const response = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=en`
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=en`,
+                {
+                    headers: {
+                        'User-Agent': 'GameKade-StudentApp/1.0',
+                    }
+                }
             );
+
             const data = await response.json();
+
             if (data && data.display_name) {
                 const addObj = data.address;
-                const shortAddress = `${addObj.road || ''}, ${addObj.city || addObj.town || addObj.suburb || ''}`;
-                setAddress(shortAddress.trim() === ',' ? data.display_name.split(',')[0] : shortAddress);
+                // Make a short address
+                const shortAddress = `${addObj.road || ''} ${addObj.suburb || ''} ${addObj.city || addObj.town || ''}`;
+
+                // Fill the address state
+                setAddress(shortAddress.trim() === '' ? data.display_name.split(',')[0] : shortAddress);
+            } else {
+                setAddress("Location Found (Name Unavailable)");
             }
         } catch (error) {
+            console.log("OSM Error:", error);
             setAddress("Unknown Location");
         }
     };
 
-    // Web Map එකෙන් එන පණිවිඩ ලබා ගැනීම (Drag කළාම)
+    // Catch Map Messages
     const handleMessage = (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
-            if (data.type === 'move') {
-                setLocation(data.coords); // මැද ලක්ෂ්‍යය සේව් කරගන්නවා
-            } else if (data.type === 'moveEnd') {
-                // Drag කරලා ඉවර වුනාම Address එක හොයනවා
+            if (data.type === 'moveEnd') {
+                // Update Location State
+                setLocation(data.coords);
                 fetchAddressFromOSM(data.coords.lat, data.coords.lng);
             }
         } catch (e) {
@@ -71,9 +96,14 @@ export default function MapScreen() {
     };
 
     const handleConfirmLocation = async () => {
-        if (!location) return;
+        if (!location) {
+            Alert.alert("Error", "Please wait for map to load.");
+            return;
+        }
+
         setSaving(true);
         try {
+            // Save Location to User Profile
             await updateAddress(address, { latitude: location.lat, longitude: location.lng });
             await refreshUserData();
             Alert.alert("Success", "Location Updated!");
@@ -85,8 +115,7 @@ export default function MapScreen() {
         }
     };
 
-    // --- HTML Map Code (Leaflet Map) ---
-    // මේක App එක ඇතුලේ පොඩි වෙබ් පිටුවක් වගේ වැඩ කරනවා
+    // HTML Map Code (Leaflet Map)
     const mapHTML = `
         <!DOCTYPE html>
         <html>
@@ -100,40 +129,28 @@ export default function MapScreen() {
                 .center-marker {
                     position: absolute;
                     top: 50%; left: 50%;
-                    transform: translate(-50%, -100%); /* Pin එකේ තුඩ හරියටම මැදට ගන්න */
+                    transform: translate(-50%, -100%);
                     z-index: 1000;
-                    pointer-events: none; /* Map එක click කරන්න ඉඩ දෙනවා */
+                    pointer-events: none;
                 }
             </style>
         </head>
         <body>
             <div id="map"></div>
-            
             <div class="center-marker">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="#D93800">
                     <path d="M12 0C7.58 0 4 3.58 4 8c0 5.25 7 13 7 13s7-7.75 7-13c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z"/>
                 </svg>
             </div>
-
             <script>
-                // Map එක පටන් ගන්නවා
-                var map = L.map('map', { zoomControl: false }).setView([${initialRegion.lat}, ${initialRegion.lng}], 15);
+                var map = L.map('map', { zoomControl: false }).setView([${initialRegion.lat}, ${initialRegion.lng}], 16);
                 
-                // OpenStreetMap Tiles දානවා
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     maxZoom: 19,
                     attribution: '© OpenStreetMap'
                 }).addTo(map);
 
-                // Map එක හොලවද්දි App එකට පණිවිඩ යවනවා
-                map.on('move', function() {
-                    var center = map.getCenter();
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                        type: 'move',
-                        coords: center
-                    }));
-                });
-
+                // Go to user's initial location
                 map.on('moveend', function() {
                     var center = map.getCenter();
                     window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -150,27 +167,24 @@ export default function MapScreen() {
         return (
             <View className="flex-1 justify-center items-center bg-white">
                 <ActivityIndicator size="large" color="#D93800" />
-                <Text className="mt-2 text-gray-500">Loading Map...</Text>
+                <Text className="mt-2 text-gray-500">Getting Location...</Text>
             </View>
         );
     }
 
     return (
         <View className="flex-1 bg-white">
-            {/* WebView Map */}
             <WebView
                 source={{ html: mapHTML }}
                 style={{ flex: 1 }}
                 onMessage={handleMessage}
-                scrollEnabled={false} // Map එක ඇතුලේ Scroll වෙන්න දෙනවා
+                scrollEnabled={false}
             />
 
-            {/* Back Button */}
             <TouchableOpacity onPress={() => router.back()} className="absolute top-12 left-5 bg-white p-3 rounded-full shadow-lg">
                 <Ionicons name="arrow-back" size={24} color="black" />
             </TouchableOpacity>
 
-            {/* Bottom Panel */}
             <View className="absolute bottom-0 w-full bg-white rounded-t-3xl p-6 shadow-2xl">
                 <Text className="text-gray-500 text-xs font-bold uppercase mb-2">Selected Location</Text>
                 <View className="flex-row items-center mb-6">
