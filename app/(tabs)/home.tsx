@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, ScrollView, Image, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import "../../global.css";
 import { router } from 'expo-router';
 
 import { categories, foodItems } from '../../constants/menuData';
 import PromoCarousel from '../../components/PromoCarousel';
+import { useAuth } from '../../context/AuthContext';
 
 export default function HomeScreen() {
+    // 👇 2. Get user data from context
+    const { user } = useAuth();
+
     const [activeCategoryId, setActiveCategoryId] = useState(1);
     const [searchQuery, setSearchQuery] = useState('');
 
-    // 2. Smart Filter Logic
+    // Smart Filter Logic
     const filteredFood = foodItems.filter((item) => {
         // Filter for Search Query
         if (searchQuery.length > 0) {
@@ -27,14 +30,23 @@ export default function HomeScreen() {
             {/* --- Header Section --- */}
             <View className="bg-white px-6 pt-12 pb-4 shadow-sm z-10">
                 <View className="flex-row justify-between items-center">
-                    <View>
+
+                    {/* Updated Address Section */}
+                    <TouchableOpacity onPress={() => router.push('/map')}>
                         <Text className="text-gray-500 text-sm font-medium">Deliver to</Text>
                         <View className="flex-row items-center gap-1">
                             <Ionicons name="location" size={20} color="#D93800" />
-                            <Text className="text-gray-800 text-lg font-bold">Colombo, Sri Lanka</Text>
+                            <Text
+                                className="text-gray-800 text-lg font-bold max-w-[250px]"
+                                numberOfLines={1} // Truncate text if it's too long
+                            >
+                                {/* Display user address or default text */}
+                                {user?.address || "Set Current Location"}
+                            </Text>
                             <Ionicons name="chevron-down" size={16} color="gray" />
                         </View>
-                    </View>
+                    </TouchableOpacity>
+
                     <TouchableOpacity className="bg-gray-100 p-2 rounded-full">
                         <Ionicons name="notifications-outline" size={24} color="black" />
                     </TouchableOpacity>
