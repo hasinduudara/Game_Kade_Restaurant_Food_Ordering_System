@@ -5,11 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import MapView, { Marker } from 'react-native-maps';
 
 import { logout } from '../../services/auth';
 import { uploadProfileImage, updateUserProfile, addCard, removeCard, updateAddress } from '../../services/userService';
 import { useAuth } from '../../context/AuthContext';
-import "../../global.css";
+
+// Default Location (Colombo)
+const DEFAULT_LOC = { latitude: 6.927079, longitude: 79.861244 };
 
 export default function ProfileScreen() {
     const { user, refreshUserData } = useAuth();
@@ -32,6 +35,12 @@ export default function ProfileScreen() {
     const [cardExpiry, setCardExpiry] = useState('');
     const [cardCVC, setCardCVC] = useState('');
     const [cardName, setCardName] = useState('');
+
+    // User Location Logic
+    const userCoords = {
+        latitude: user?.latitude || DEFAULT_LOC.latitude,
+        longitude: user?.longitude || DEFAULT_LOC.longitude
+    };
 
     // Image Upload Logic
     const pickImage = async () => {
@@ -124,7 +133,7 @@ export default function ProfileScreen() {
     const handleUpdateAddress = async () => {
         if(!newAddress) return Alert.alert("Error", "Address required");
         try {
-            await updateAddress(newAddress, { latitude: 0, longitude: 0 });
+            await updateAddress(newAddress, { latitude: userCoords.latitude, longitude: userCoords.longitude }); // Keep existing coords if editing text only
             await refreshUserData();
             setShowAddressModal(false);
             Alert.alert("Success", "Address Updated!");
@@ -140,12 +149,10 @@ export default function ProfileScreen() {
         setShowEditModal(true);
     };
 
-    // Logout Button Click Handler
     const handleLogoutClick = () => {
         setShowLogoutModal(true);
     };
 
-    // Actual Logout Function
     const performLogout = async () => {
         setShowLogoutModal(false);
         await logout();
@@ -172,22 +179,55 @@ export default function ProfileScreen() {
                     <TouchableOpacity onPress={openEditModal} className="mt-4 bg-gray-100 px-6 py-2 rounded-full flex-row items-center"><Ionicons name="create-outline" size={18} color="#D93800" /><Text className="ml-2 text-gray-700 font-semibold">Edit Profile</Text></TouchableOpacity>
                 </View>
 
-                {/* Address Section */}
+                {/* ADDRESS SECTION WITH MAP PREVIEW */}
                 <View className="mb-6">
-                    <Text className="text-gray-800 font-bold text-lg mb-3">Delivery Address</Text>
-                    <TouchableOpacity
-                        onPress={() => router.push('/map')}
-                        className="bg-white p-4 rounded-2xl flex-row items-center shadow-sm border border-gray-100"
-                    >
-                        <View className="bg-orange-100 p-2 rounded-full"><Ionicons name="location" size={24} color="#D93800" /></View>
-                        <View className="flex-1 ml-3">
-                            <Text className="text-gray-800 font-medium" numberOfLines={1}>
-                                {user?.address || "Set Default Location"}
-                            </Text>
-                            <Text className="text-gray-400 text-xs">Tap to update on map</Text>
+                    <View className="flex-row justify-between items-center mb-3">
+                        <Text className="text-gray-800 font-bold text-lg">Delivery Address</Text>
+                        <TouchableOpacity onPress={() => setShowAddressModal(true)}>
+                            <Text className="text-[#D93800] font-bold text-xs">Edit Text</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Map Card */}
+                    <View className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-200">
+                        {/* Map View (Non-interactive) */}
+                        <View className="h-40 w-full pointer-events-none">
+                            <MapView
+                                style={{ flex: 1 }}
+                                initialRegion={{
+                                    latitude: userCoords.latitude,
+                                    longitude: userCoords.longitude,
+                                    latitudeDelta: 0.01,
+                                    longitudeDelta: 0.01,
+                                }}
+                                scrollEnabled={false} // Disable gestures
+                                zoomEnabled={false}
+                                pitchEnabled={false}
+                                rotateEnabled={false}
+                            >
+                                <Marker coordinate={userCoords} pinColor="red" />
+                            </MapView>
                         </View>
-                        <Ionicons name="chevron-forward" size={20} color="gray" />
-                    </TouchableOpacity>
+
+                        {/* Overlay Content */}
+                        <TouchableOpacity
+                            onPress={() => router.push('/map')}
+                            className="bg-white p-4 flex-row items-center justify-between border-t border-gray-100"
+                        >
+                            <View className="flex-1 mr-2">
+                                <View className="flex-row items-center mb-1">
+                                    <Ionicons name="location" size={18} color="#D93800" />
+                                    <Text className="text-gray-800 font-bold ml-1 text-base">Current Location</Text>
+                                </View>
+                                <Text className="text-gray-500 text-sm leading-5" numberOfLines={2}>
+                                    {user?.address || "No address set. Tap to select on map."}
+                                </Text>
+                            </View>
+                            <View className="bg-gray-100 p-2 rounded-full">
+                                <Ionicons name="map-outline" size={20} color="black" />
+                            </View>
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {/* Payment Methods */}

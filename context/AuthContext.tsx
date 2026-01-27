@@ -11,6 +11,8 @@ type UserData = {
     phone?: string;
     photoURL?: string;
     address?: string;
+    latitude?: number;
+    longitude?: number;
     savedCards?: any[];
 };
 
