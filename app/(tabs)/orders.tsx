@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Image, Modal, TextInput, Alert, ScrollView, Platform } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Image, Modal, TextInput, Alert, ScrollView } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline, UrlTile } from 'react-native-maps';
@@ -22,9 +22,9 @@ export default function OrdersScreen() {
     const [viewMode, setViewMode] = useState<'history' | 'summary' | 'details' | 'tracking'>('history');
 
     // Form States
-    const [tempName, setTempName] = useState(user?.fullName || "Guest User");
-    const [tempPhone, setTempPhone] = useState("0771234567");
-    const [tempAddress, setTempAddress] = useState(user?.address || "Colombo 07");
+    const [tempName, setTempName] = useState(user?.fullName || '');
+    const [tempPhone, setTempPhone] = useState(user?.phone || '');
+    const [tempAddress, setTempAddress] = useState(user?.address || '');
 
     // Modal States
     const [showPaymentModal, setShowPaymentModal] = useState(false);
