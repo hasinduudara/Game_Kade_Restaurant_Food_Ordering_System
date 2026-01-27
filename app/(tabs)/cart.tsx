@@ -3,11 +3,15 @@ import { View, Text, Image, TouchableOpacity, ScrollView, Alert } from 'react-na
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCart } from '../../context/CartContext';
+import { useOrders } from '../../context/OrderContext';
 
 export default function CartScreen() {
-    const { items, removeFromCart, updateQuantity, getTotalPrice } = useCart();
+    // Get clearCart from useCart
+    const { items, removeFromCart, updateQuantity, getTotalPrice, clearCart } = useCart();
+    // Get addOrder from useOrders
+    const { addOrder } = useOrders();
 
-    // Cart is empty
+    // Check if Cart is empty
     if (items.length === 0) {
         return (
             <View className="flex-1 justify-center items-center bg-white">
@@ -23,6 +27,22 @@ export default function CartScreen() {
         );
     }
 
+    // Handle Checkout Logic
+    const handleCheckout = () => {
+        const totalAmount = getTotalPrice();
+
+        // Add to Order History
+        addOrder(items, totalAmount);
+
+        // Clear the Cart
+        clearCart();
+
+        // Navigate to Orders Screen
+        Alert.alert("Success", "Order Placed Successfully!", [
+            { text: "OK", onPress: () => router.push('/(tabs)/orders') }
+        ]);
+    };
+
     return (
         <View className="flex-1 bg-gray-50">
             {/* Header */}
@@ -34,7 +54,6 @@ export default function CartScreen() {
             <ScrollView className="flex-1 px-4 mt-4" showsVerticalScrollIndicator={false}>
                 {items.map((item) => (
                     <View key={item.id} className="bg-white p-4 rounded-2xl mb-4 flex-row items-center shadow-sm border border-gray-100">
-
                         {/* Image */}
                         <Image source={{ uri: item.image }} className="w-20 h-20 rounded-xl bg-gray-100" resizeMode="cover" />
 
@@ -62,8 +81,6 @@ export default function CartScreen() {
                         </View>
                     </View>
                 ))}
-
-                {/* Spacer for bottom items */}
                 <View className="h-32" />
             </ScrollView>
 
@@ -71,11 +88,11 @@ export default function CartScreen() {
             <View className="absolute bottom-0 w-full bg-white p-6 rounded-t-3xl shadow-2xl border-t border-gray-100">
                 <View className="flex-row justify-between items-center mb-6">
                     <Text className="text-gray-500 font-medium">Total Amount</Text>
-                    <Text className="text-3xl font-extrabold text-[#D93800]">{getTotalPrice()}</Text>
+                    <Text className="text-3xl font-extrabold text-[#D93800]">Rs. {getTotalPrice().toFixed(0)}</Text>
                 </View>
 
                 <TouchableOpacity
-                    onPress={() => Alert.alert("Success", "Order Placed Successfully!")}
+                    onPress={handleCheckout} // Call handleCheckout
                     className="bg-black w-full py-4 rounded-2xl flex-row justify-center items-center"
                 >
                     <Text className="text-white font-bold text-lg mr-2">Checkout</Text>

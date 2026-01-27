@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-// 1. Cart Item
 export type CartItem = {
     id: number | string;
     name: string;
@@ -9,23 +8,21 @@ export type CartItem = {
     quantity: number;
 };
 
-// 2. Context Type
 type CartContextType = {
     items: CartItem[];
     addToCart: (item: any, qty?: number) => void;
     removeFromCart: (id: number | string) => void;
     updateQuantity: (id: number | string, action: 'increase' | 'decrease') => void;
+    clearCart: () => void;
     getTotalPrice: () => number;
     cartCount: number;
 };
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-// 3. Provider Component
 export const CartProvider = ({ children }: { children: ReactNode }) => {
     const [items, setItems] = useState<CartItem[]>([]);
 
-    // Function: Add item to cart
     const addToCart = (product: any, qty: number = 1) => {
         setItems((prevItems) => {
             const existingItem = prevItems.find((item) => item.id === product.id);
@@ -58,7 +55,11 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         });
     };
 
-    // Total Price Calculation
+    // Implement clearCart function
+    const clearCart = () => {
+        setItems([]);
+    };
+
     const getTotalPrice = () => {
         return items.reduce((total, item) => {
             let cleanPrice = item.price.toLowerCase().replace('rs.', '').replace('rs', '');
@@ -74,6 +75,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
             addToCart,
             removeFromCart,
             updateQuantity,
+            clearCart,
             getTotalPrice,
             cartCount: items.length
         }}>
