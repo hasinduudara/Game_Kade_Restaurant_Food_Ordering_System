@@ -10,6 +10,7 @@ import MapView, { Marker } from 'react-native-maps';
 import { logout } from '../../services/auth';
 import { uploadProfileImage, updateUserProfile, addCard, removeCard, updateAddress } from '../../services/userService';
 import { useAuth } from '../../context/AuthContext';
+import "../../global.css";
 
 // Default Location (Colombo)
 const DEFAULT_LOC = { latitude: 6.927079, longitude: 79.861244 };
@@ -38,8 +39,8 @@ export default function ProfileScreen() {
 
     // User Location Logic
     const userCoords = {
-        latitude: user?.latitude || DEFAULT_LOC.latitude,
-        longitude: user?.longitude || DEFAULT_LOC.longitude
+        latitude: user?.location?.latitude || DEFAULT_LOC.latitude,
+        longitude: user?.location?.longitude || DEFAULT_LOC.longitude
     };
 
     // Image Upload Logic
@@ -133,7 +134,8 @@ export default function ProfileScreen() {
     const handleUpdateAddress = async () => {
         if(!newAddress) return Alert.alert("Error", "Address required");
         try {
-            await updateAddress(newAddress, { latitude: userCoords.latitude, longitude: userCoords.longitude }); // Keep existing coords if editing text only
+            // Keep existing coords if editing text only
+            await updateAddress(newAddress, { latitude: userCoords.latitude, longitude: userCoords.longitude });
             await refreshUserData();
             setShowAddressModal(false);
             Alert.alert("Success", "Address Updated!");
@@ -190,9 +192,9 @@ export default function ProfileScreen() {
 
                     {/* Map Card */}
                     <View className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-200">
-                        {/* Map View (Non-interactive) */}
                         <View className="h-40 w-full pointer-events-none">
                             <MapView
+                                key={`${userCoords.latitude}-${userCoords.longitude}`}
                                 style={{ flex: 1 }}
                                 initialRegion={{
                                     latitude: userCoords.latitude,
@@ -200,7 +202,7 @@ export default function ProfileScreen() {
                                     latitudeDelta: 0.01,
                                     longitudeDelta: 0.01,
                                 }}
-                                scrollEnabled={false} // Disable gestures
+                                scrollEnabled={false}
                                 zoomEnabled={false}
                                 pitchEnabled={false}
                                 rotateEnabled={false}
@@ -209,7 +211,6 @@ export default function ProfileScreen() {
                             </MapView>
                         </View>
 
-                        {/* Overlay Content */}
                         <TouchableOpacity
                             onPress={() => router.push('/map')}
                             className="bg-white p-4 flex-row items-center justify-between border-t border-gray-100"

@@ -4,15 +4,17 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebaseConfig';
 
 // User Data Type Definition
-type UserData = {
+export type UserData = {
     uid: string;
     email: string | null;
     fullName?: string;
     phone?: string;
     photoURL?: string;
     address?: string;
-    latitude?: number;
-    longitude?: number;
+    location?: {
+        latitude: number;
+        longitude: number;
+    };
     savedCards?: any[];
 };
 
