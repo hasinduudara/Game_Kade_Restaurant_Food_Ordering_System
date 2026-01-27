@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Image, Modal, TextInput, ScrollView, ActivityIndicator, Animated } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, FlatList, TouchableOpacity, Image, Modal, TextInput, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline, UrlTile } from 'react-native-maps';
@@ -36,18 +36,12 @@ export default function OrdersScreen() {
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [showRatingModal, setShowRatingModal] = useState(false);
     const [ratingStar, setRatingStar] = useState(0);
-    const [isSubmitting, setIsSubmitting] = useState(false); // New state for submission loading
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState({
         visible: false, title: "", message: "", onClose: () => {}
     });
-
-    // In-App Notification State
-    const [notification, setNotification] = useState({
-        visible: false, title: "", message: "", icon: "notifications" as any, color: "#000"
-    });
-    const fadeAnim = useRef(new Animated.Value(0)).current;
 
     // Tracking States
     const [orderStatus, setOrderStatus] = useState("Preparing");
@@ -66,17 +60,6 @@ export default function OrdersScreen() {
             setViewMode('history');
         }
     }, [params.view, activeOrder, items.length]);
-
-    // --- HELPER: In-App Notification ---
-    const triggerNotification = (title: string, message: string, icon: string = "notifications", color: string = "#D93800") => {
-        setNotification({ visible: true, title, message, icon: icon as any, color });
-        Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
-        setTimeout(() => {
-            Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
-                setNotification(prev => ({ ...prev, visible: false }));
-            });
-        }, 4000);
-    };
 
     // --- HELPER: Custom Alert ---
     const showCustomAlert = (title: string, message: string, callback?: () => void) => {
@@ -102,10 +85,10 @@ export default function OrdersScreen() {
                 setSelectedCoords({ latitude: lat, longitude: lon });
                 fetchAddressFromOSM(lat, lon);
             } else {
-                triggerNotification("Not Found", "Location not found.", "alert-circle", "red");
+                Alert.alert("Not Found", "Location not found.");
             }
         } catch {
-            triggerNotification("Error", "Could not search location.", "alert-circle", "red");
+            Alert.alert("Error", "Could not search location.");
         } finally {
             setIsSearching(false);
         }
@@ -143,11 +126,10 @@ export default function OrdersScreen() {
 
     const handlePayment = (method: string) => {
         setShowPaymentModal(false);
-        triggerNotification("Order Placed! 🍔", `Your order has been placed via ${method}.`, "fast-food", "#22c55e");
 
+        // Show Custom Alert
         showCustomAlert("Order Placed!", `Paid via ${method}. Waiting for restaurant confirmation.`, () => {
             const newOrder: Order = {
-                // Temporary ID until saved to Firebase
                 id: Math.random().toString(36).substr(2, 9).toUpperCase(),
                 items: [...items],
                 total: getTotalPrice(),
@@ -174,7 +156,7 @@ export default function OrdersScreen() {
         setRiderLoc(RESTAURANT_LOC);
 
         setTimeout(() => {
-            triggerNotification("Order Ready! 🛵", "Your food is ready! The rider is picking it up.", "bicycle", "#D93800");
+            // Show Custom Alert
             showCustomAlert("Order Ready!", "Your food is ready! The rider is picking it up.", () => {
                 setOrderStatus("Delivering");
                 startRiderMovement(targetLoc);
@@ -194,17 +176,14 @@ export default function OrdersScreen() {
             if (steps >= maxSteps) {
                 clearInterval(interval);
                 setOrderStatus("Completed");
-                triggerNotification("Delivered! 😋", "Your order has arrived. Enjoy your meal!", "checkmark-circle", "#22c55e");
                 setShowRatingModal(true);
             }
         }, 200);
     };
 
-    // 👇 Firebase Submission Logic
     const submitRating = async () => {
         if (activeOrder) {
             setIsSubmitting(true);
-            // Firebase එකට Save කරනවා
             await addOrderToHistory({ ...activeOrder, status: 'Completed' });
             setIsSubmitting(false);
             setActiveOrder(null);
@@ -309,7 +288,6 @@ export default function OrdersScreen() {
                     </View>
                 </Modal>
                 {renderCustomAlert()}
-                {renderInAppNotification()}
             </View>
         );
     }
@@ -354,7 +332,6 @@ export default function OrdersScreen() {
                     </View>
                 </Modal>
                 {renderCustomAlert()}
-                {renderInAppNotification()}
             </View>
         );
     }
@@ -391,8 +368,6 @@ export default function OrdersScreen() {
                     )}
                 />
             )}
-
-            {renderInAppNotification()}
         </View>
     );
 
@@ -408,16 +383,6 @@ export default function OrdersScreen() {
                     </View>
                 </View>
             </Modal>
-        );
-    }
-
-    function renderInAppNotification() {
-        if (!notification.visible) return null;
-        return (
-            <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }} className="absolute top-12 left-4 right-4 bg-white p-4 rounded-2xl shadow-2xl flex-row items-center z-50 border border-gray-100">
-                <View style={{ backgroundColor: notification.color + '20' }} className="p-3 rounded-full"><Ionicons name={notification.icon} size={24} color={notification.color} /></View>
-                <View className="ml-3 flex-1"><Text className="text-gray-800 font-bold text-base">{notification.title}</Text><Text className="text-gray-500 text-xs mt-1">{notification.message}</Text></View>
-            </Animated.View>
         );
     }
 }
