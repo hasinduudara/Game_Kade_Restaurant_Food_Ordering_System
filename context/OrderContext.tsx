@@ -13,6 +13,7 @@ export type Order = {
         phone: string;
         address: string;
         paymentMethod: string;
+        coordinates?: { latitude: number; longitude: number };
     };
 };
 

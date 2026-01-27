@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Image, Modal, TextInput, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Image, Modal, TextInput, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline, UrlTile } from 'react-native-maps';
@@ -8,9 +8,10 @@ import { useCart } from '../../context/CartContext';
 import { useOrders, Order } from '../../context/OrderContext';
 import { useAuth } from '../../context/AuthContext';
 
-// Static Locations
+// Restaurant Location (Static)
 const RESTAURANT_LOC = { latitude: 6.927079, longitude: 79.861244 };
-const DEFAULT_USER_LOC = { latitude: 6.9000, longitude: 79.8500 };
+// Default Fallback
+const DEFAULT_LOC = { latitude: 6.9000, longitude: 79.8500 };
 
 export default function OrdersScreen() {
     const params = useLocalSearchParams();
@@ -26,18 +27,20 @@ export default function OrdersScreen() {
     const [tempPhone, setTempPhone] = useState(user?.phone || '');
     const [tempAddress, setTempAddress] = useState(user?.address || '');
 
+    // 👇 Location Picker States
+    const [showMapPicker, setShowMapPicker] = useState(false);
+    const [selectedCoords, setSelectedCoords] = useState(DEFAULT_LOC);
+    const [searchText, setSearchText] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+
     // Modal States
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [showRatingModal, setShowRatingModal] = useState(false);
     const [ratingStar, setRatingStar] = useState(0);
 
-    // 👇 1. Custom Alert State (අලුතින් එකතු කළා)
+    // Custom Alert State
     const [alertConfig, setAlertConfig] = useState({
-        visible: false,
-        title: "",
-        message: "",
-        type: "success", // success or info
-        onClose: () => {}
+        visible: false, title: "", message: "", onClose: () => {}
     });
 
     // Tracking States
@@ -48,6 +51,9 @@ export default function OrdersScreen() {
     useEffect(() => {
         if (activeOrder) {
             setViewMode('tracking');
+            if(activeOrder.deliveryDetails?.coordinates) {
+                setSelectedCoords(activeOrder.deliveryDetails.coordinates);
+            }
         } else if (params.view === 'checkout' && items.length > 0) {
             setViewMode((prev) => (prev === 'details' ? 'details' : 'summary'));
         } else {
@@ -55,13 +61,10 @@ export default function OrdersScreen() {
         }
     }, [params.view, activeOrder, items.length]);
 
-    // --- HELPER: Show Custom Alert ---
+    // --- HELPER: Custom Alert ---
     const showCustomAlert = (title: string, message: string, callback?: () => void) => {
         setAlertConfig({
-            visible: true,
-            title,
-            message,
-            type: "success",
+            visible: true, title, message,
             onClose: () => {
                 setAlertConfig(prev => ({ ...prev, visible: false }));
                 if (callback) callback();
@@ -69,7 +72,55 @@ export default function OrdersScreen() {
         });
     };
 
+    // --- 1. SEARCH LOCATION (Nominatim API) ---
+    const searchLocation = async () => {
+        if (!searchText.trim()) return;
+        setIsSearching(true);
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchText)}&countrycodes=lk`);
+            const data = await response.json();
+
+            if (data && data.length > 0) {
+                const lat = parseFloat(data[0].lat);
+                const lon = parseFloat(data[0].lon);
+                const coords = { latitude: lat, longitude: lon };
+
+                setSelectedCoords(coords);
+                fetchAddressFromOSM(lat, lon); // නම හොයාගත්තම Address එකත් Update කරනවා
+            } else {
+                Alert.alert("Not Found", "Location not found.");
+            }
+        } catch {
+            Alert.alert("Error", "Could not search location.");
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    // --- 2. REVERSE GEOCODING (Coords -> Address Name) ---
+    const fetchAddressFromOSM = async (lat: number, lng: number) => {
+        try {
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=en`,
+                { headers: { 'User-Agent': 'GameKade-App/1.0' } }
+            );
+            const data = await response.json();
+            if (data && data.display_name) {
+                const addObj = data.address;
+                const shortAddress = `${addObj.road || ''} ${addObj.suburb || ''} ${addObj.city || addObj.town || ''}`;
+                setTempAddress(shortAddress.trim() === '' ? data.display_name.split(',')[0] : shortAddress);
+            }
+        } catch (err) {
+            console.log("Address fetch error", err);
+        }
+    };
+
     // --- HANDLERS ---
+    const handleMapPress = (e: any) => {
+        const coords = e.nativeEvent.coordinate;
+        setSelectedCoords(coords);
+        fetchAddressFromOSM(coords.latitude, coords.longitude);
+    };
 
     const handleCancel = () => {
         router.push('/(tabs)/cart');
@@ -79,10 +130,7 @@ export default function OrdersScreen() {
     const handlePayment = (method: string) => {
         setShowPaymentModal(false);
 
-        // 👇 2. Alert එක වෙනුවට Custom Alert එක පාවිච්චි කළා
         showCustomAlert("Order Placed!", `Paid via ${method}. Waiting for restaurant confirmation.`, () => {
-
-            // Alert එක OK කළාම තමයි Order එක හැදෙන්නේ
             const newOrder: Order = {
                 id: Math.random().toString(36).substr(2, 9).toUpperCase(),
                 items: [...items],
@@ -93,37 +141,37 @@ export default function OrdersScreen() {
                     name: tempName,
                     phone: tempPhone,
                     address: tempAddress,
-                    paymentMethod: method
+                    paymentMethod: method,
+                    coordinates: selectedCoords
                 }
             };
 
             setActiveOrder(newOrder);
             clearCart();
             setViewMode('tracking');
-            startOrderSimulation();
+            startOrderSimulation(newOrder.deliveryDetails?.coordinates || DEFAULT_LOC);
         });
     };
 
-    const startOrderSimulation = () => {
+    const startOrderSimulation = (targetLoc: any) => {
         setOrderStatus("Preparing");
         setRiderLoc(RESTAURANT_LOC);
 
         setTimeout(() => {
-            // 👇 3. Order Ready Alert එකත් ලස්සන කළා
             showCustomAlert("Order Ready!", "Your food is ready! The rider is picking it up.", () => {
                 setOrderStatus("Delivering");
-                startRiderMovement();
+                startRiderMovement(targetLoc);
             });
-        }, 10000); // 10 seconds simulation
+        }, 10000);
     };
 
-    const startRiderMovement = () => {
+    const startRiderMovement = (targetLoc: any) => {
         let steps = 0;
-        const maxSteps = 20;
+        const maxSteps = 40;
         const interval = setInterval(() => {
             steps++;
-            const lat = RESTAURANT_LOC.latitude + (DEFAULT_USER_LOC.latitude - RESTAURANT_LOC.latitude) * (steps / maxSteps);
-            const lng = RESTAURANT_LOC.longitude + (DEFAULT_USER_LOC.longitude - RESTAURANT_LOC.longitude) * (steps / maxSteps);
+            const lat = RESTAURANT_LOC.latitude + (targetLoc.latitude - RESTAURANT_LOC.latitude) * (steps / maxSteps);
+            const lng = RESTAURANT_LOC.longitude + (targetLoc.longitude - RESTAURANT_LOC.longitude) * (steps / maxSteps);
             setRiderLoc({ latitude: lat, longitude: lng });
 
             if (steps >= maxSteps) {
@@ -131,7 +179,7 @@ export default function OrdersScreen() {
                 setOrderStatus("Completed");
                 setShowRatingModal(true);
             }
-        }, 500);
+        }, 200);
     };
 
     const submitRating = () => {
@@ -146,12 +194,11 @@ export default function OrdersScreen() {
 
     // --- VIEWS ---
 
-    // SUMMARY VIEW
+    // 1. SUMMARY VIEW
     if (viewMode === 'summary') {
         return (
             <View className="flex-1 bg-white pt-12 px-6">
                 <Text className="text-2xl font-bold text-gray-800 mb-6">Order Summary</Text>
-
                 <ScrollView className="flex-1 mb-24" showsVerticalScrollIndicator={false}>
                     {items.map((item) => (
                         <View key={item.id} className="flex-row justify-between mb-4 border-b border-gray-100 pb-2">
@@ -164,7 +211,6 @@ export default function OrdersScreen() {
                         <Text className="text-xl font-extrabold text-[#D93800]">Rs. {getTotalPrice().toFixed(0)}</Text>
                     </View>
                 </ScrollView>
-
                 <View className="absolute bottom-6 left-6 right-6 gap-3 bg-white pt-2">
                     <TouchableOpacity onPress={() => setViewMode('details')} className="bg-black py-4 rounded-xl items-center shadow-lg">
                         <Text className="text-white font-bold text-lg">Order Now</Text>
@@ -177,12 +223,11 @@ export default function OrdersScreen() {
         );
     }
 
-    // DETAILS VIEW
+    // 2. DETAILS VIEW
     if (viewMode === 'details') {
         return (
             <View className="flex-1 bg-white pt-12 px-6">
                 <Text className="text-2xl font-bold text-gray-800 mb-6">Delivery Details</Text>
-
                 <ScrollView showsVerticalScrollIndicator={false}>
                     <Text className="text-gray-500 mb-1 font-medium">Contact Name</Text>
                     <TextInput value={tempName} onChangeText={setTempName} className="bg-gray-100 p-4 rounded-xl mb-4 text-lg text-gray-800" />
@@ -191,9 +236,21 @@ export default function OrdersScreen() {
                     <TextInput value={tempPhone} onChangeText={setTempPhone} keyboardType="phone-pad" className="bg-gray-100 p-4 rounded-xl mb-4 text-lg text-gray-800" />
 
                     <Text className="text-gray-500 mb-1 font-medium">Delivery Address</Text>
-                    <View className="bg-gray-100 p-4 rounded-xl mb-6 flex-row items-center">
-                        <Ionicons name="location" size={24} color="#D93800" />
-                        <TextInput value={tempAddress} onChangeText={setTempAddress} className="flex-1 ml-2 text-lg text-gray-800" multiline />
+                    <View className="flex-row gap-2 mb-6">
+                        <View className="bg-gray-100 p-4 rounded-xl flex-1 flex-row items-center">
+                            <Ionicons name="location" size={24} color="#D93800" />
+                            <TextInput
+                                value={tempAddress}
+                                onChangeText={setTempAddress}
+                                className="flex-1 ml-2 text-lg text-gray-800"
+                                multiline
+                                placeholder="Type address or pick on map ->"
+                            />
+                        </View>
+                        {/* 👇 Button to Open Map Picker */}
+                        <TouchableOpacity onPress={() => setShowMapPicker(true)} className="bg-black w-14 justify-center items-center rounded-xl">
+                            <Ionicons name="map" size={24} color="white" />
+                        </TouchableOpacity>
                     </View>
 
                     <TouchableOpacity onPress={() => setShowPaymentModal(true)} className="bg-black py-4 rounded-xl items-center shadow-lg mb-4">
@@ -205,52 +262,91 @@ export default function OrdersScreen() {
                     </TouchableOpacity>
                 </ScrollView>
 
+                {/* --- LOCATION PICKER MODAL --- */}
+                <Modal visible={showMapPicker} animationType="slide">
+                    <View className="flex-1 bg-white">
+                        {/* Search Bar */}
+                        <View className="absolute top-10 left-4 right-4 z-10 flex-row gap-2">
+                            <View className="flex-1 bg-white flex-row items-center p-3 rounded-full shadow-md">
+                                <Ionicons name="search" size={20} color="gray" />
+                                <TextInput
+                                    placeholder="Search (e.g. Kandy)"
+                                    value={searchText}
+                                    onChangeText={setSearchText}
+                                    className="flex-1 ml-2"
+                                />
+                                {isSearching && <ActivityIndicator size="small" color="#D93800" />}
+                            </View>
+                            <TouchableOpacity onPress={searchLocation} className="bg-black p-3 rounded-full justify-center items-center">
+                                <Text className="text-white font-bold text-xs">GO</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <MapView
+                            style={{ flex: 1 }}
+                            mapType="none" // Hide Google Map
+                            region={{
+                                latitude: selectedCoords.latitude,
+                                longitude: selectedCoords.longitude,
+                                latitudeDelta: 0.05,
+                                longitudeDelta: 0.05,
+                            }}
+                            onPress={handleMapPress} // 👇 Map එක එබුවම තැන තේරීම
+                        >
+                            {/* OSM Tiles */}
+                            <UrlTile urlTemplate="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} zIndex={-1} />
+                            <Marker coordinate={selectedCoords} pinColor="red" />
+                        </MapView>
+
+                        <View className="absolute bottom-8 left-6 right-6">
+                            <TouchableOpacity onPress={() => setShowMapPicker(false)} className="bg-[#D93800] py-4 rounded-xl items-center shadow-lg">
+                                <Text className="text-white font-bold text-lg">Confirm Location</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <TouchableOpacity onPress={() => setShowMapPicker(false)} className="absolute top-12 left-4 bg-white p-2 rounded-full shadow-md mt-12">
+                            <Ionicons name="close" size={20} color="black" />
+                        </TouchableOpacity>
+                    </View>
+                </Modal>
+
+                {/* Payment Modal */}
                 <Modal visible={showPaymentModal} transparent animationType="slide">
                     <View className="flex-1 justify-end bg-black/50">
                         <View className="bg-white p-6 rounded-t-3xl">
                             <Text className="text-xl font-bold mb-4">Select Payment Method</Text>
-
-                            <TouchableOpacity onPress={() => handlePayment('Saved Card')} className="bg-gray-100 p-4 rounded-xl mb-3 flex-row items-center">
-                                <Ionicons name="card" size={24} color="black" />
-                                <Text className="ml-3 text-lg font-medium">Saved Card (**** 1234)</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity onPress={() => handlePayment('Cash On Delivery')} className="bg-gray-100 p-4 rounded-xl mb-6 flex-row items-center">
-                                <Ionicons name="cash" size={24} color="green" />
-                                <Text className="ml-3 text-lg font-medium">Cash On Delivery</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity onPress={() => setShowPaymentModal(false)} className="items-center bg-gray-200 p-3 rounded-xl">
-                                <Text className="text-red-500 font-bold">Cancel</Text>
-                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handlePayment('Saved Card')} className="bg-gray-100 p-4 rounded-xl mb-3 flex-row items-center"><Ionicons name="card" size={24} color="black" /><Text className="ml-3 text-lg font-medium">Saved Card (**** 1234)</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => handlePayment('Cash On Delivery')} className="bg-gray-100 p-4 rounded-xl mb-6 flex-row items-center"><Ionicons name="cash" size={24} color="green" /><Text className="ml-3 text-lg font-medium">Cash On Delivery</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => setShowPaymentModal(false)} className="items-center bg-gray-200 p-3 rounded-xl"><Text className="text-red-500 font-bold">Cancel</Text></TouchableOpacity>
                         </View>
                     </View>
                 </Modal>
-
-                {/* 👇 Custom Alert Modal එක මෙතනත් Render වෙන්න ඕන (Modal එක උඩින් පේන්න) */}
                 {renderCustomAlert()}
             </View>
         );
     }
 
-    // TRACKING VIEW
+    // 3. TRACKING VIEW
     if (viewMode === 'tracking' && activeOrder) {
+        const targetCoords = activeOrder.deliveryDetails?.coordinates || selectedCoords;
+
         return (
             <View className="flex-1 bg-white">
                 <View className="h-[60%] w-full">
                     <MapView
                         style={{ flex: 1 }}
                         mapType="none"
-                        initialRegion={{ ...RESTAURANT_LOC, latitudeDelta: 0.05, longitudeDelta: 0.05 }}
+                        initialRegion={{
+                            latitude: (RESTAURANT_LOC.latitude + targetCoords.latitude) / 2,
+                            longitude: (RESTAURANT_LOC.longitude + targetCoords.longitude) / 2,
+                            latitudeDelta: 0.08,
+                            longitudeDelta: 0.08,
+                        }}
                     >
-                        <UrlTile
-                            urlTemplate="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                            maximumZ={19}
-                            zIndex={-1}
-                        />
+                        <UrlTile urlTemplate="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} zIndex={-1} />
 
                         <Marker coordinate={RESTAURANT_LOC} title="Restaurant" pinColor="red" />
-                        <Marker coordinate={DEFAULT_USER_LOC} title="You" pinColor="blue" />
+                        <Marker coordinate={targetCoords} title="Delivery Location" pinColor="blue" />
 
                         {orderStatus === 'Delivering' && (
                             <Marker coordinate={riderLoc} title="Rider">
@@ -258,7 +354,7 @@ export default function OrdersScreen() {
                             </Marker>
                         )}
 
-                        <Polyline coordinates={[RESTAURANT_LOC, DEFAULT_USER_LOC]} strokeWidth={3} strokeColor="#D93800" />
+                        <Polyline coordinates={[RESTAURANT_LOC, targetCoords]} strokeWidth={3} strokeColor="#D93800" />
                     </MapView>
                 </View>
 
@@ -283,7 +379,7 @@ export default function OrdersScreen() {
                     </View>
                 </View>
 
-                {/* Rating Modal */}
+                {/* Rating & Alert Modals */}
                 <Modal visible={showRatingModal} transparent animationType="fade">
                     <View className="flex-1 justify-center items-center bg-black/60">
                         <View className="bg-white w-[85%] p-6 rounded-3xl items-center">
@@ -297,20 +393,16 @@ export default function OrdersScreen() {
                                 ))}
                             </View>
                             <TextInput placeholder="Write a review..." className="bg-gray-100 w-full p-3 rounded-xl mb-4" />
-                            <TouchableOpacity onPress={submitRating} className="bg-black w-full py-3 rounded-xl items-center">
-                                <Text className="text-white font-bold">Submit</Text>
-                            </TouchableOpacity>
+                            <TouchableOpacity onPress={submitRating} className="bg-black w-full py-3 rounded-xl items-center"><Text className="text-white font-bold">Submit</Text></TouchableOpacity>
                         </View>
                     </View>
                 </Modal>
-
-                {/* 👇 Custom Alert Modal (Tracking View එකටත්) */}
                 {renderCustomAlert()}
             </View>
         );
     }
 
-    // HISTORY VIEW
+    // 4. HISTORY VIEW
     return (
         <View className="flex-1 bg-gray-50 pt-12 px-6">
             <View className="flex-row justify-between items-center mb-6">
@@ -349,7 +441,6 @@ export default function OrdersScreen() {
         </View>
     );
 
-    // 👇 4. Reusable Custom Alert Component
     function renderCustomAlert() {
         return (
             <Modal
@@ -360,18 +451,12 @@ export default function OrdersScreen() {
             >
                 <View className="flex-1 justify-center items-center bg-black/60">
                     <View className="bg-white w-[85%] p-6 rounded-3xl items-center shadow-2xl">
-                        {/* Success Icon */}
                         <View className="bg-green-100 p-4 rounded-full mb-4">
                             <Ionicons name="checkmark-circle" size={50} color="#22c55e" />
                         </View>
-
                         <Text className="text-2xl font-bold text-gray-800 mb-2">{alertConfig.title}</Text>
                         <Text className="text-gray-500 text-center mb-6">{alertConfig.message}</Text>
-
-                        <TouchableOpacity
-                            onPress={alertConfig.onClose}
-                            className="bg-black w-full py-3 rounded-xl items-center"
-                        >
+                        <TouchableOpacity onPress={alertConfig.onClose} className="bg-black w-full py-3 rounded-xl items-center">
                             <Text className="text-white font-bold text-lg">OK</Text>
                         </TouchableOpacity>
                     </View>
