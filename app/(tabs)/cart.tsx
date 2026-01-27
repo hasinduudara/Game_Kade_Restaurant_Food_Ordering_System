@@ -1,15 +1,12 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, Image, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCart } from '../../context/CartContext';
-import { useOrders } from '../../context/OrderContext';
 
 export default function CartScreen() {
-    // Get clearCart from useCart
-    const { items, removeFromCart, updateQuantity, getTotalPrice, clearCart } = useCart();
-    // Get addOrder from useOrders
-    const { addOrder } = useOrders();
+
+    const { items, removeFromCart, updateQuantity, getTotalPrice } = useCart();
 
     // Check if Cart is empty
     if (items.length === 0) {
@@ -27,20 +24,11 @@ export default function CartScreen() {
         );
     }
 
-    // Handle Checkout Logic
+    // Updated Checkout Logic
     const handleCheckout = () => {
-        const totalAmount = getTotalPrice();
-
-        // Add to Order History
-        addOrder(items, totalAmount);
-
-        // Clear the Cart
-        clearCart();
-
-        // Navigate to Orders Screen
-        Alert.alert("Success", "Order Placed Successfully!", [
-            { text: "OK", onPress: () => router.push('/(tabs)/orders') }
-        ]);
+        // Navigate to Orders tab with 'checkout' parameter
+        // Cart is NOT cleared here so users can cancel later if they want
+        router.push({ pathname: '/(tabs)/orders', params: { view: 'checkout' } });
     };
 
     return (
@@ -92,7 +80,7 @@ export default function CartScreen() {
                 </View>
 
                 <TouchableOpacity
-                    onPress={handleCheckout} // Call handleCheckout
+                    onPress={handleCheckout}
                     className="bg-black w-full py-4 rounded-2xl flex-row justify-center items-center"
                 >
                     <Text className="text-white font-bold text-lg mr-2">Checkout</Text>
