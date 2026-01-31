@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Image, ActivityIndicator, Alert, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { WebView } from 'react-native-webview';
+import MapView, { Marker, UrlTile, PROVIDER_GOOGLE } from 'react-native-maps';
 
 import { logout } from '../../services/auth';
 import { uploadProfileImage, updateUserProfile, addCard, removeCard, updateAddress } from '../../services/userService';
@@ -37,56 +37,18 @@ export default function ProfileScreen() {
     const [cardCVC, setCardCVC] = useState('');
     const [cardName, setCardName] = useState('');
 
+    // Screen එකට එන හැම පාරම User Data Refresh කරනවා
+    useFocusEffect(
+        useCallback(() => {
+            refreshUserData();
+        }, [])
+    );
+
     // User Location Logic
     const userCoords = {
         latitude: user?.location?.latitude || DEFAULT_LOC.latitude,
         longitude: user?.location?.longitude || DEFAULT_LOC.longitude
     };
-
-    // --- LEAFLET MAP HTML (Static Preview) ---
-    const mapHTML = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-            <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-            <style>
-                body { margin: 0; padding: 0; }
-                #map { height: 100vh; width: 100vw; }
-                .leaflet-control-zoom, .leaflet-control-attribution { display: none !important; }
-            </style>
-        </head>
-        <body>
-            <div id="map"></div>
-            <script>
-                var map = L.map('map', { 
-                    zoomControl: false, 
-                    dragging: false, 
-                    scrollWheelZoom: false, 
-                    doubleClickZoom: false, 
-                    touchZoom: false 
-                }).setView([${userCoords.latitude}, ${userCoords.longitude}], 16);
-                
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
-                    maxZoom: 19
-                }).addTo(map);
-
-                // Add Red Marker
-                var redIcon = new L.Icon({
-                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41],
-                    popupAnchor: [1, -34],
-                    shadowSize: [41, 41]
-                });
-
-                L.marker([${userCoords.latitude}, ${userCoords.longitude}], {icon: redIcon}).addTo(map);
-            </script>
-        </body>
-        </html>
-    `;
 
     // Image Upload Logic
     const pickImage = async () => {
@@ -133,6 +95,7 @@ export default function ProfileScreen() {
     // Add Card Logic
     const handleAddCard = async () => {
         const cleanNumber = cardNumber.replace(/\s/g, '');
+
         if (cleanNumber.length < 16) return Alert.alert("Error", "Invalid Card Number");
         if (cardExpiry.length < 5) return Alert.alert("Error", "Invalid Expiry Date");
         if (cardCVC.length < 3) return Alert.alert("Error", "Invalid CVC");
@@ -143,6 +106,7 @@ export default function ProfileScreen() {
             expiry: cardExpiry,
             type: cleanNumber.startsWith('4') ? "Visa" : "MasterCard"
         };
+
         try {
             await addCard(newCard);
             await refreshUserData();
@@ -177,6 +141,7 @@ export default function ProfileScreen() {
     const handleUpdateAddress = async () => {
         if(!newAddress) return Alert.alert("Error", "Address required");
         try {
+            // Keep existing coords if editing text only
             await updateAddress(newAddress, { latitude: userCoords.latitude, longitude: userCoords.longitude });
             await refreshUserData();
             setShowAddressModal(false);
@@ -223,7 +188,7 @@ export default function ProfileScreen() {
                     <TouchableOpacity onPress={openEditModal} className="mt-4 bg-gray-100 px-6 py-2 rounded-full flex-row items-center"><Ionicons name="create-outline" size={18} color="#D93800" /><Text className="ml-2 text-gray-700 font-semibold">Edit Profile</Text></TouchableOpacity>
                 </View>
 
-                {/* ADDRESS SECTION WITH WEBVIEW MAP PREVIEW */}
+                {/* ADDRESS SECTION WITH MAP PREVIEW */}
                 <View className="mb-6">
                     <View className="flex-row justify-between items-center mb-3">
                         <Text className="text-gray-800 font-bold text-lg">Delivery Address</Text>
@@ -232,17 +197,35 @@ export default function ProfileScreen() {
                         </TouchableOpacity>
                     </View>
 
+                    {/* Map Card Section */}
                     <View className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-200">
                         <View className="h-40 w-full pointer-events-none">
-                            {/* 👇 REPLACED MAPVIEW WITH WEBVIEW */}
-                            <WebView
-                                source={{ html: mapHTML }}
+                            <MapView
+                                provider={PROVIDER_GOOGLE}
                                 style={{ flex: 1 }}
+                                mapType="none" // Google Map Tiles හංගනවා
+                                region={{
+                                    latitude: userCoords.latitude,
+                                    longitude: userCoords.longitude,
+                                    latitudeDelta: 0.005,
+                                    longitudeDelta: 0.005,
+                                }}
                                 scrollEnabled={false}
-                                pointerEvents="none"
-                            />
+                                zoomEnabled={false}
+                                pitchEnabled={false}
+                                rotateEnabled={false}
+                            >
+                                {/* 👇 Esri World Street Map Tiles (ගොඩක් Professional සහ Free) */}
+                                <UrlTile
+                                    urlTemplate="https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+                                    maximumZ={19}
+                                    flipY={false}
+                                />
+                                <Marker coordinate={userCoords} pinColor="red" />
+                            </MapView>
                         </View>
 
+                        {/* Address Text Section */}
                         <TouchableOpacity
                             onPress={() => router.push('/map')}
                             className="bg-white p-4 flex-row items-center justify-between border-t border-gray-100"
@@ -285,8 +268,7 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
             </ScrollView>
 
-            {/* Modals are kept as is ... */}
-            {/* 1. Add Card Modal */}
+            {/* Modals are unchanged */}
             <Modal visible={showCardModal} transparent animationType="slide">
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
                     <View className="flex-1 justify-end bg-black/60">
@@ -295,7 +277,6 @@ export default function ProfileScreen() {
                                 <Text className="text-xl font-bold text-gray-800">Add New Card</Text>
                                 <TouchableOpacity onPress={() => setShowCardModal(false)}><Ionicons name="close" size={24} color="gray" /></TouchableOpacity>
                             </View>
-
                             <ScrollView showsVerticalScrollIndicator={false}>
                                 <View className="mb-8 shadow-xl">
                                     <LinearGradient colors={['#1A1F71', '#004e92']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} className="w-full h-48 rounded-2xl p-6 justify-between">

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Modal, TextInput, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, FlatList, TouchableOpacity, Image, Modal, TextInput, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { WebView } from 'react-native-webview';
+import MapView, { Marker, Polyline, UrlTile, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 
 import { useCart } from '../../context/CartContext';
@@ -22,14 +22,21 @@ export default function OrdersScreen() {
     // View Modes
     const [viewMode, setViewMode] = useState<'history' | 'summary' | 'details' | 'tracking'>('history');
 
-    // Form States
+    // Form States (Initial values from User Profile)
     const [tempName, setTempName] = useState(user?.fullName || '');
     const [tempPhone, setTempPhone] = useState(user?.phone || '');
     const [tempAddress, setTempAddress] = useState(user?.address || '');
 
     // Location Picker States
     const [showMapPicker, setShowMapPicker] = useState(false);
-    const [selectedCoords, setSelectedCoords] = useState(DEFAULT_LOC);
+
+    // 👇 1. මුලින්ම User ගේ Saved Location එක දාගන්නවා (නැත්නම් Default එක)
+    const [selectedCoords, setSelectedCoords] = useState(
+        user?.location && user.location.latitude
+            ? { latitude: user.location.latitude, longitude: user.location.longitude }
+            : DEFAULT_LOC
+    );
+
     const [loadingLocation, setLoadingLocation] = useState(false);
 
     // Modal States
@@ -47,6 +54,24 @@ export default function OrdersScreen() {
     const [orderStatus, setOrderStatus] = useState("Preparing");
     const [riderLoc, setRiderLoc] = useState(RESTAURANT_LOC);
 
+    // 👇 2. User Data ලෝඩ් වුනාම හරි, වෙනස් වුනාම හරි Form එක Auto Update කරනවා
+    useEffect(() => {
+        if (user) {
+            setTempName(user.fullName || '');
+            setTempPhone(user.phone || '');
+            setTempAddress(user.address || '');
+
+            // User ට Saved Location එකක් තියෙනවා නම් ඒක Select කරනවා
+            if (user.location && user.location.latitude && user.location.longitude) {
+                setSelectedCoords({
+                    latitude: user.location.latitude,
+                    longitude: user.location.longitude
+                });
+            }
+        }
+    }, [user]);
+
+    // --- USE EFFECT ---
     useEffect(() => {
         if (activeOrder) {
             setViewMode('tracking');
@@ -74,18 +99,19 @@ export default function OrdersScreen() {
     const renderCustomAlert = () => (
         <Modal visible={alertConfig.visible} transparent animationType="fade">
             <View className="flex-1 justify-center items-center bg-black/60">
-                <View className="bg-white w-[85%] p-6 rounded-3xl items-center">
-                    <Text className="text-xl font-bold mb-2">{alertConfig.title}</Text>
-                    <Text className="text-gray-500 mb-6 text-center">{alertConfig.message}</Text>
+                <View className="bg-white w-[85%] p-6 rounded-3xl items-center shadow-2xl">
+                    <View className="bg-green-100 p-4 rounded-full mb-4"><Ionicons name="checkmark-circle" size={50} color="#22c55e" /></View>
+                    <Text className="text-2xl font-bold text-gray-800 mb-2">{alertConfig.title}</Text>
+                    <Text className="text-gray-500 text-center mb-6">{alertConfig.message}</Text>
                     <TouchableOpacity onPress={alertConfig.onClose} className="bg-black w-full py-3 rounded-xl items-center">
-                        <Text className="text-white font-bold">OK</Text>
+                        <Text className="text-white font-bold text-lg">OK</Text>
                     </TouchableOpacity>
                 </View>
             </View>
         </Modal>
     );
 
-    // GET CURRENT LOCATION
+    // GET CURRENT LOCATION FUNCTION
     const getUserLocation = async () => {
         setLoadingLocation(true);
         try {
@@ -95,31 +121,33 @@ export default function OrdersScreen() {
                 setLoadingLocation(false);
                 return;
             }
+
             let location = await Location.getCurrentPositionAsync({});
-            setSelectedCoords({
+            const currentCoords = {
                 latitude: location.coords.latitude,
                 longitude: location.coords.longitude
-            });
-        } catch {
+            };
+
+            setSelectedCoords(currentCoords);
+
+        } catch (error) {
             Alert.alert("Error", "Could not get current location.");
         } finally {
             setLoadingLocation(false);
         }
     };
 
+    // OPEN MAP & GET LOCATION
     const openMapPicker = () => {
         setShowMapPicker(true);
-        getUserLocation();
+        // Map එක Open කරනකොටම Current Location ඉල්ලන්නේ නෑ (User කැමති නම් button එක ඔබයි)
+        // getUserLocation();
     };
 
-    // --- MAP PICKER: Handle Message from WebView ---
-    const handlePickerMessage = (event: any) => {
-        try {
-            const data = JSON.parse(event.nativeEvent.data);
-            if (data.type === 'moveEnd') {
-                setSelectedCoords(data.coords);
-            }
-        } catch(e) { console.log(e); }
+    // --- HANDLERS ---
+    const handleMapPress = (e: any) => {
+        const coords = e.nativeEvent.coordinate;
+        setSelectedCoords(coords);
     };
 
     const handleCancel = () => {
@@ -129,6 +157,7 @@ export default function OrdersScreen() {
 
     const handlePayment = (method: string) => {
         setShowPaymentModal(false);
+
         showCustomAlert("Order Placed!", `Paid via ${method}. Waiting for restaurant confirmation.`, () => {
             const newOrder: Order = {
                 id: Math.random().toString(36).substr(2, 9).toUpperCase(),
@@ -144,6 +173,7 @@ export default function OrdersScreen() {
                     coordinates: selectedCoords
                 }
             };
+
             setActiveOrder(newOrder);
             clearCart();
             setViewMode('tracking');
@@ -154,6 +184,7 @@ export default function OrdersScreen() {
     const startOrderSimulation = (targetLoc: any) => {
         setOrderStatus("Preparing");
         setRiderLoc(RESTAURANT_LOC);
+
         setTimeout(() => {
             showCustomAlert("Order Ready!", "Your food is ready! The rider is picking it up.", () => {
                 setOrderStatus("Delivering");
@@ -170,6 +201,7 @@ export default function OrdersScreen() {
             const lat = RESTAURANT_LOC.latitude + (targetLoc.latitude - RESTAURANT_LOC.latitude) * (steps / maxSteps);
             const lng = RESTAURANT_LOC.longitude + (targetLoc.longitude - RESTAURANT_LOC.longitude) * (steps / maxSteps);
             setRiderLoc({ latitude: lat, longitude: lng });
+
             if (steps >= maxSteps) {
                 clearInterval(interval);
                 setOrderStatus("Completed");
@@ -190,103 +222,9 @@ export default function OrdersScreen() {
         router.push('/(tabs)/home');
     };
 
-    // --- HTML FOR PICKER MAP ---
-    const pickerMapHTML = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-            <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-            <style>
-                body { margin: 0; padding: 0; }
-                #map { height: 100vh; width: 100vw; }
-                .leaflet-control-zoom { display: none !important; }
-                .center-marker {
-                    position: absolute;
-                    top: 50%; left: 50%;
-                    transform: translate(-50%, -100%);
-                    z-index: 1000;
-                    pointer-events: none;
-                }
-            </style>
-        </head>
-        <body>
-            <div id="map"></div>
-            <div class="center-marker">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="#D93800">
-                    <path d="M12 0C7.58 0 4 3.58 4 8c0 5.25 7 13 7 13s7-7.75 7-13c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z"/>
-                </svg>
-            </div>
-            <script>
-                var map = L.map('map', { zoomControl: false }).setView([${selectedCoords.latitude}, ${selectedCoords.longitude}], 16);
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-                map.on('moveend', function() {
-                    var center = map.getCenter();
-                    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'moveEnd', coords: { latitude: center.lat, longitude: center.lng } }));
-                });
-            </script>
-        </body>
-        </html>
-    `;
-
-    // --- HTML FOR TRACKING MAP ---
-    const getTrackingHTML = () => {
-        const targetCoords = activeOrder?.deliveryDetails?.coordinates || selectedCoords;
-        return `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-                <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-                <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-                <style>
-                    body { margin: 0; padding: 0; }
-                    #map { height: 100vh; width: 100vw; }
-                    .leaflet-control-zoom { display: none !important; }
-                </style>
-            </head>
-            <body>
-                <div id="map"></div>
-                <script>
-                    var map = L.map('map', { zoomControl: false }).setView([${RESTAURANT_LOC.latitude}, ${RESTAURANT_LOC.longitude}], 14);
-                    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-
-                    var restIcon = new L.Icon({
-                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-                    });
-                     var userIcon = new L.Icon({
-                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-                    });
-
-                    L.marker([${RESTAURANT_LOC.latitude}, ${RESTAURANT_LOC.longitude}], {icon: restIcon}).addTo(map).bindPopup("Restaurant");
-                    L.marker([${targetCoords.latitude}, ${targetCoords.longitude}], {icon: userIcon}).addTo(map).bindPopup("You");
-
-                    ${orderStatus === 'Delivering' ? `
-                        var riderIcon = L.icon({
-                            iconUrl: 'https://cdn-icons-png.flaticon.com/512/3063/3063823.png',
-                            iconSize: [40, 40], iconAnchor: [20, 20]
-                        });
-                        L.marker([${riderLoc.latitude}, ${riderLoc.longitude}], {icon: riderIcon}).addTo(map);
-                    ` : ''}
-
-                    var latlngs = [
-                        [${RESTAURANT_LOC.latitude}, ${RESTAURANT_LOC.longitude}],
-                        [${targetCoords.latitude}, ${targetCoords.longitude}]
-                    ];
-                    var polyline = L.polyline(latlngs, {color: '#D93800', weight: 4}).addTo(map);
-                    map.fitBounds(polyline.getBounds(), {padding: [50, 50]});
-                </script>
-            </body>
-            </html>
-        `;
-    }
-
     // --- VIEWS ---
+
+    // SUMMARY VIEW
     if (viewMode === 'summary') {
         return (
             <View className="flex-1 bg-white pt-12 px-6">
@@ -315,6 +253,7 @@ export default function OrdersScreen() {
         );
     }
 
+    // DETAILS VIEW
     if (viewMode === 'details') {
         return (
             <View className="flex-1 bg-white pt-12 px-6">
@@ -322,35 +261,73 @@ export default function OrdersScreen() {
                 <ScrollView showsVerticalScrollIndicator={false}>
                     <Text className="text-gray-500 mb-1 font-medium">Contact Name</Text>
                     <TextInput value={tempName} onChangeText={setTempName} className="bg-gray-100 p-4 rounded-xl mb-4 text-lg text-gray-800" />
+
                     <Text className="text-gray-500 mb-1 font-medium">Phone Number</Text>
                     <TextInput value={tempPhone} onChangeText={setTempPhone} keyboardType="phone-pad" className="bg-gray-100 p-4 rounded-xl mb-4 text-lg text-gray-800" />
+
                     <Text className="text-gray-500 mb-1 font-medium">Delivery Address</Text>
                     <View className="flex-row gap-2 mb-6">
                         <View className="bg-gray-100 p-4 rounded-xl flex-1 flex-row items-center">
                             <Ionicons name="location" size={24} color="#D93800" />
                             <TextInput value={tempAddress} onChangeText={setTempAddress} className="flex-1 ml-2 text-lg text-gray-800" multiline placeholder="Type address or pick on map ->" />
                         </View>
-                        <TouchableOpacity onPress={openMapPicker} className="bg-black w-14 justify-center items-center rounded-xl"><Ionicons name="map" size={24} color="white" /></TouchableOpacity>
+                        {/* Button to Open Map Picker */}
+                        <TouchableOpacity onPress={openMapPicker} className="bg-black w-14 justify-center items-center rounded-xl">
+                            <Ionicons name="map" size={24} color="white" />
+                        </TouchableOpacity>
                     </View>
-                    <TouchableOpacity onPress={() => setShowPaymentModal(true)} className="bg-black py-4 rounded-xl items-center shadow-lg mb-4"><Text className="text-white font-bold text-lg">Proceed to Payment</Text></TouchableOpacity>
-                    <TouchableOpacity onPress={() => setViewMode('summary')} className="items-center py-2"><Text className="text-gray-500 font-bold">Back</Text></TouchableOpacity>
+
+                    <TouchableOpacity onPress={() => setShowPaymentModal(true)} className="bg-black py-4 rounded-xl items-center shadow-lg mb-4">
+                        <Text className="text-white font-bold text-lg">Proceed to Payment</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity onPress={() => setViewMode('summary')} className="items-center py-2">
+                        <Text className="text-gray-500 font-bold">Back</Text>
+                    </TouchableOpacity>
                 </ScrollView>
 
-                {/* --- LOCATION PICKER MODAL (Leaflet) --- */}
+                {/* --- UPDATED LOCATION PICKER MODAL (With Esri Tiles) --- */}
                 <Modal visible={showMapPicker} animationType="slide">
                     <View className="flex-1 bg-white">
-                        <WebView
-                            source={{ html: pickerMapHTML }}
+                        <MapView
+                            provider={PROVIDER_GOOGLE}
                             style={{ flex: 1 }}
-                            onMessage={handlePickerMessage}
-                        />
+                            mapType="none"
+                            showsUserLocation={true}
+                            // Initial region is set to selectedCoords (User's location)
+                            region={{
+                                latitude: selectedCoords.latitude,
+                                longitude: selectedCoords.longitude,
+                                latitudeDelta: 0.01,
+                                longitudeDelta: 0.01,
+                            }}
+                            onPress={handleMapPress}
+                        >
+                            {/* Esri World Street Map Tiles */}
+                            <UrlTile
+                                urlTemplate="https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+                                maximumZ={19}
+                                flipY={false}
+                            />
+                            <Marker coordinate={selectedCoords} pinColor="red" title="Delivery Location" />
+                        </MapView>
+
                         {loadingLocation && (
-                            <View className="absolute top-20 self-center bg-white px-4 py-2 rounded-full shadow-md flex-row items-center"><ActivityIndicator size="small" color="#D93800" /><Text className="ml-2 font-bold text-gray-600">Locating you...</Text></View>
+                            <View className="absolute top-20 self-center bg-white px-4 py-2 rounded-full shadow-md flex-row items-center">
+                                <ActivityIndicator size="small" color="#D93800" />
+                                <Text className="ml-2 font-bold text-gray-600">Locating you...</Text>
+                            </View>
                         )}
+
                         <View className="absolute bottom-8 left-6 right-6">
-                            <TouchableOpacity onPress={() => setShowMapPicker(false)} className="bg-[#D93800] py-4 rounded-xl items-center shadow-lg"><Text className="text-white font-bold text-lg">Confirm Location</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => setShowMapPicker(false)} className="bg-[#D93800] py-4 rounded-xl items-center shadow-lg">
+                                <Text className="text-white font-bold text-lg">Confirm Location</Text>
+                            </TouchableOpacity>
                         </View>
-                        <TouchableOpacity onPress={() => setShowMapPicker(false)} className="absolute top-12 left-4 bg-white p-2 rounded-full shadow-md mt-12"><Ionicons name="close" size={20} color="black" /></TouchableOpacity>
+
+                        <TouchableOpacity onPress={() => setShowMapPicker(false)} className="absolute top-12 left-4 bg-white p-2 rounded-full shadow-md mt-12">
+                            <Ionicons name="close" size={20} color="black" />
+                        </TouchableOpacity>
                     </View>
                 </Modal>
 
@@ -369,15 +346,36 @@ export default function OrdersScreen() {
         );
     }
 
+    // TRACKING VIEW
     if (viewMode === 'tracking' && activeOrder) {
+        const targetCoords = activeOrder.deliveryDetails?.coordinates || selectedCoords;
         return (
             <View className="flex-1 bg-white">
                 <View className="h-[60%] w-full">
-                    {/* Tracking Map WebView */}
-                    <WebView
-                        source={{ html: getTrackingHTML() }}
+                    {/* --- UPDATED TRACKING MAP (With Esri Tiles) --- */}
+                    <MapView
+                        provider={PROVIDER_GOOGLE}
                         style={{ flex: 1 }}
-                    />
+                        mapType="none"
+                        initialRegion={{
+                            latitude: (RESTAURANT_LOC.latitude + targetCoords.latitude) / 2,
+                            longitude: (RESTAURANT_LOC.longitude + targetCoords.longitude) / 2,
+                            latitudeDelta: 0.08,
+                            longitudeDelta: 0.08
+                        }}
+                    >
+                        {/* Esri World Street Map Tiles */}
+                        <UrlTile
+                            urlTemplate="https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+                            maximumZ={19}
+                            flipY={false}
+                        />
+
+                        <Marker coordinate={RESTAURANT_LOC} title="Restaurant" pinColor="red" />
+                        <Marker coordinate={targetCoords} title="Delivery Location" pinColor="blue" />
+                        {orderStatus === 'Delivering' && (<Marker coordinate={riderLoc} title="Rider"><Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/3063/3063823.png' }} style={{ width: 40, height: 40 }} /></Marker>)}
+                        <Polyline coordinates={[RESTAURANT_LOC, targetCoords]} strokeWidth={4} strokeColor="#D93800" />
+                    </MapView>
                 </View>
                 <View className="flex-1 bg-white -mt-6 rounded-t-3xl p-6 shadow-2xl">
                     <Text className="text-gray-500 text-center mb-2">Estimated Arrival: 15 mins</Text>
@@ -405,14 +403,19 @@ export default function OrdersScreen() {
         );
     }
 
+    // HISTORY VIEW (With Loading)
     return (
         <View className="flex-1 bg-gray-50 pt-12 px-6">
             <View className="flex-row justify-between items-center mb-6">
                 <Text className="text-2xl font-bold text-gray-800">My Orders</Text>
                 <TouchableOpacity onPress={() => setViewMode('history')}><Ionicons name="refresh" size={24} color="black" /></TouchableOpacity>
             </View>
+
             {loadingOrders ? (
-                <View className="flex-1 justify-center items-center"><ActivityIndicator size="large" color="#D93800" /><Text className="text-gray-400 mt-2">Loading History...</Text></View>
+                <View className="flex-1 justify-center items-center">
+                    <ActivityIndicator size="large" color="#D93800" />
+                    <Text className="text-gray-400 mt-2">Loading History...</Text>
+                </View>
             ) : orders.length === 0 ? (
                 <View className="flex-1 justify-center items-center"><Ionicons name="receipt-outline" size={80} color="#ccc" /><Text className="text-gray-400 mt-4">No past orders</Text></View>
             ) : (
