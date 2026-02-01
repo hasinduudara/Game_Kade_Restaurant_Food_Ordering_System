@@ -1,4 +1,4 @@
-# Gama Kade 🍛
+# Game Kade 🍛
 
 A modern mobile food ordering application for Sri Lankan cuisine, built with React Native and Expo. Order your favorite rice dishes, kottu, burgers, and drinks with an intuitive and beautiful interface.
 
@@ -79,7 +79,7 @@ A modern mobile food ordering application for Sri Lankan cuisine, built with Rea
 ## 🏗️ Project Structure
 
 ```
-Gama-Kade/
+Game-Kade/
 ├── app/                    # Application screens and routes
 │   ├── (auth)/            # Authentication screens
 │   ├── (tabs)/            # Main tab navigation screens
@@ -103,7 +103,13 @@ Gama-Kade/
 
 ## 📸 Screenshots
 
-_Add your app screenshots here_
+![Screenshot_20260201-185259](https://github.com/user-attachments/assets/5ac31996-f139-4cd9-9140-355c8b9bf199)
+
+![Screenshot_20260201-185259](https://github.com/user-attachments/assets/ef4fff9b-126e-4d3e-ba3b-4cc99cf5e220)
+
+![Screenshot_20260201-185359](https://github.com/user-attachments/assets/a0bf87bc-8a30-45b9-a690-ccee6435af4d)
+
+![Screenshot_20260201-185423](https://github.com/user-attachments/assets/9511529b-4f78-4e9f-9bdd-19acce416bec)
 
 ## 🔐 Environment Variables
 
