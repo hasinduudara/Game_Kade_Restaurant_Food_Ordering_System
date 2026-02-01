@@ -41,7 +41,7 @@ export default function ProfileScreen() {
     useFocusEffect(
         useCallback(() => {
             refreshUserData();
-        }, [])
+        }, [refreshUserData])
     );
 
     // User Location Logic
@@ -99,12 +99,14 @@ export default function ProfileScreen() {
         if (cleanNumber.length < 16) return Alert.alert("Error", "Invalid Card Number");
         if (cardExpiry.length < 5) return Alert.alert("Error", "Invalid Expiry Date");
         if (cardCVC.length < 3) return Alert.alert("Error", "Invalid CVC");
+        if (!cardName.trim()) return Alert.alert("Error", "Cardholder name required");
 
         const newCard = {
             id: Date.now().toString(),
-            last4: cleanNumber.slice(-4),
+            lastFourDigits: cleanNumber.slice(-4),
             expiry: cardExpiry,
-            type: cleanNumber.startsWith('4') ? "Visa" : "MasterCard"
+            cardType: cleanNumber.startsWith('4') ? "visa" : "mastercard",
+            cardholderName: cardName
         };
 
         try {
@@ -252,15 +254,42 @@ export default function ProfileScreen() {
                         <Text className="text-gray-800 font-bold text-lg">Payment Methods</Text>
                         <TouchableOpacity onPress={() => setShowCardModal(true)}><Text className="text-[#D93800] font-bold text-sm">+ Add Card</Text></TouchableOpacity>
                     </View>
-                    {user?.savedCards?.map((card: any, index: number) => (
-                        <View key={index} className="bg-white p-4 rounded-2xl mb-3 flex-row items-center shadow-sm border border-gray-100 justify-between">
-                            <View className="flex-row items-center">
-                                <View className="bg-blue-50 p-2 rounded-lg mr-3"><Ionicons name="card" size={24} color="#1A1F71" /></View>
-                                <View><Text className="text-gray-800 font-bold text-base">**** **** **** {card.last4}</Text><Text className="text-gray-400 text-xs">Expires: {card.expiry}</Text></View>
+                    {user?.savedCards && Array.isArray(user.savedCards) && user.savedCards.length > 0 ? (
+                        user.savedCards.map((card: any, index: number) => (
+                            <View key={card.id || index} className="bg-white p-4 rounded-2xl mb-3 flex-row items-center shadow-sm border border-gray-100 justify-between">
+                                <View className="flex-row items-center">
+                                    <View className={`${
+                                        card.cardType === 'visa' ? 'bg-blue-50' : 
+                                        card.cardType === 'mastercard' ? 'bg-orange-50' : 
+                                        'bg-purple-50'
+                                    } p-2 rounded-lg mr-3`}>
+                                        <Ionicons
+                                            name="card"
+                                            size={24}
+                                            color={
+                                                card.cardType === 'visa' ? '#1434CB' :
+                                                card.cardType === 'mastercard' ? '#EB001B' :
+                                                '#000'
+                                            }
+                                        />
+                                    </View>
+                                    <View>
+                                        <Text className="text-gray-800 font-bold text-base capitalize">{card.cardType || 'Card'}</Text>
+                                        <Text className="text-gray-600 text-sm">**** **** **** {card.lastFourDigits}</Text>
+                                        <Text className="text-gray-400 text-xs">{card.cardholderName}</Text>
+                                        <Text className="text-gray-400 text-xs">Expires: {card.expiry}</Text>
+                                    </View>
+                                </View>
+                                <TouchableOpacity onPress={() => handleRemoveCard(card)} className="p-2"><Ionicons name="trash-outline" size={20} color="#FF3B30" /></TouchableOpacity>
                             </View>
-                            <TouchableOpacity onPress={() => handleRemoveCard(card)} className="p-2"><Ionicons name="trash-outline" size={20} color="#FF3B30" /></TouchableOpacity>
+                        ))
+                    ) : (
+                        <View className="bg-gray-50 p-6 rounded-2xl items-center border border-gray-200">
+                            <Ionicons name="card-outline" size={40} color="#ccc" />
+                            <Text className="text-gray-400 mt-2 font-medium">No saved cards</Text>
+                            <Text className="text-xs text-gray-400 text-center mt-1">Add a payment card to make checkout faster</Text>
                         </View>
-                    ))}
+                    )}
                 </View>
 
                 <TouchableOpacity onPress={handleLogoutClick} className="mt-auto mb-10 bg-red-50 p-4 rounded-2xl flex-row justify-center items-center border border-red-100">

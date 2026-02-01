@@ -150,6 +150,7 @@ export default function LoginScreen() {
                     fullName: fullName,
                     email: email,
                     phone: phone,
+                    savedCards: [], // Initialize empty array for cards
                     createdAt: new Date().toISOString()
                 });
 

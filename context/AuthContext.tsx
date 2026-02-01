@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebaseConfig';
 
@@ -46,14 +46,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const fetchUserData = async (uid: string) => {
         try {
+            // Double-check if user is still logged in before fetching
+            if (!auth.currentUser) {
+                setUser(null);
+                setLoading(false);
+                return;
+            }
+
             const docRef = doc(db, "users", uid);
             const docSnap = await getDoc(docRef);
 
             if (docSnap.exists()) {
                 setUser({ uid, email: auth.currentUser?.email || null, ...docSnap.data() } as UserData);
+            } else {
+                // Document doesn't exist but user is authenticated
+                setUser({ uid, email: auth.currentUser?.email || null } as UserData);
             }
-        } catch (e) {
-            console.error("Error fetching user data:", e);
+        } catch (e: any) {
+            // Handle permission errors gracefully (usually happens during logout)
+            if (e?.code === 'permission-denied' || e?.message?.includes('permission')) {
+                console.log("Permission denied - user likely logged out");
+                setUser(null);
+            } else {
+                console.error("Error fetching user data:", e);
+            }
         } finally {
             setLoading(false);
         }
@@ -61,8 +77,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // Function to refresh user data
     const refreshUserData = async () => {
+        // Only refresh if user is currently logged in
         if (auth.currentUser) {
-            await fetchUserData(auth.currentUser.uid);
+            try {
+                await fetchUserData(auth.currentUser.uid);
+            } catch {
+                // Silently fail if user is logging out
+                console.log("Could not refresh user data");
+            }
         }
     };
 

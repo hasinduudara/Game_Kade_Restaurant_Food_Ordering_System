@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Image, Modal, TextInput, ScrollView, ActivityIndicator, Alert } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline, UrlTile, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -15,7 +15,7 @@ const DEFAULT_LOC = { latitude: 6.9000, longitude: 79.8500 };
 
 export default function OrdersScreen() {
     const params = useLocalSearchParams();
-    const { user } = useAuth();
+    const { user, refreshUserData } = useAuth();
     const { items, getTotalPrice, clearCart } = useCart();
     const { orders, activeOrder, setActiveOrder, addOrderToHistory, loadingOrders } = useOrders();
 
@@ -44,6 +44,7 @@ export default function OrdersScreen() {
     const [showRatingModal, setShowRatingModal] = useState(false);
     const [ratingStar, setRatingStar] = useState(0);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [selectedCard, setSelectedCard] = useState<any>(null);
 
     // Custom Alert State
     const [alertConfig, setAlertConfig] = useState({
@@ -54,7 +55,6 @@ export default function OrdersScreen() {
     const [orderStatus, setOrderStatus] = useState("Preparing");
     const [riderLoc, setRiderLoc] = useState(RESTAURANT_LOC);
 
-    // 👇 2. User Data ලෝඩ් වුනාම හරි, වෙනස් වුනාම හරි Form එක Auto Update කරනවා
     useEffect(() => {
         if (user) {
             setTempName(user.fullName || '');
@@ -70,6 +70,13 @@ export default function OrdersScreen() {
             }
         }
     }, [user]);
+
+    // Refresh user data when screen is focused (to load saved cards)
+    useFocusEffect(
+        useCallback(() => {
+            refreshUserData();
+        }, [refreshUserData])
+    );
 
     // --- USE EFFECT ---
     useEffect(() => {
@@ -158,7 +165,13 @@ export default function OrdersScreen() {
     const handlePayment = (method: string) => {
         setShowPaymentModal(false);
 
-        showCustomAlert("Order Placed!", `Paid via ${method}. Waiting for restaurant confirmation.`, () => {
+        const paymentInfo = method === 'Cash On Delivery'
+            ? 'Cash On Delivery'
+            : selectedCard
+                ? `Card ending in ${selectedCard.lastFourDigits}`
+                : method;
+
+        showCustomAlert("Order Placed!", `Paid via ${paymentInfo}. Waiting for restaurant confirmation.`, () => {
             const newOrder: Order = {
                 id: Math.random().toString(36).substr(2, 9).toUpperCase(),
                 items: [...items],
@@ -169,7 +182,7 @@ export default function OrdersScreen() {
                     name: tempName,
                     phone: tempPhone,
                     address: tempAddress,
-                    paymentMethod: method,
+                    paymentMethod: paymentInfo,
                     coordinates: selectedCoords
                 }
             };
@@ -333,11 +346,84 @@ export default function OrdersScreen() {
 
                 <Modal visible={showPaymentModal} transparent animationType="slide">
                     <View className="flex-1 justify-end bg-black/50">
-                        <View className="bg-white p-6 rounded-t-3xl">
+                        <View className="bg-white p-6 rounded-t-3xl max-h-[80%]">
                             <Text className="text-xl font-bold mb-4">Select Payment Method</Text>
-                            <TouchableOpacity onPress={() => handlePayment('Saved Card')} className="bg-gray-100 p-4 rounded-xl mb-3 flex-row items-center"><Ionicons name="card" size={24} color="black" /><Text className="ml-3 text-lg font-medium">Saved Card (**** 1234)</Text></TouchableOpacity>
-                            <TouchableOpacity onPress={() => handlePayment('Cash On Delivery')} className="bg-gray-100 p-4 rounded-xl mb-6 flex-row items-center"><Ionicons name="cash" size={24} color="green" /><Text className="ml-3 text-lg font-medium">Cash On Delivery</Text></TouchableOpacity>
-                            <TouchableOpacity onPress={() => setShowPaymentModal(false)} className="items-center bg-gray-200 p-3 rounded-xl"><Text className="text-red-500 font-bold">Cancel</Text></TouchableOpacity>
+
+                            <ScrollView showsVerticalScrollIndicator={false}>
+                                {/* Display all saved cards */}
+                                {user?.savedCards && Array.isArray(user.savedCards) && user.savedCards.length > 0 ? (
+                                    <>
+                                        <Text className="text-gray-500 text-sm mb-2 font-medium">Saved Cards</Text>
+                                        {user.savedCards.map((card: any, index: number) => (
+                                            <TouchableOpacity
+                                                key={card.id || index}
+                                                onPress={() => {
+                                                    setSelectedCard(card);
+                                                    handlePayment('Card Payment');
+                                                }}
+                                                className={`${
+                                                    card.cardType === 'visa' ? 'bg-blue-50' : 
+                                                    card.cardType === 'mastercard' ? 'bg-orange-50' : 
+                                                    'bg-purple-50'
+                                                } p-4 rounded-xl mb-3 flex-row items-center border-2 ${
+                                                    selectedCard?.id === card.id ? 'border-[#D93800]' : 'border-transparent'
+                                                }`}
+                                            >
+                                                <View className="bg-white p-2 rounded-lg">
+                                                    <Ionicons
+                                                        name="card"
+                                                        size={24}
+                                                        color={
+                                                            card.cardType === 'visa' ? '#1434CB' :
+                                                            card.cardType === 'mastercard' ? '#EB001B' :
+                                                            '#000'
+                                                        }
+                                                    />
+                                                </View>
+                                                <View className="ml-3 flex-1">
+                                                    <Text className="text-lg font-bold capitalize">{card.cardType || 'Card'}</Text>
+                                                    <Text className="text-gray-600">**** **** **** {card.lastFourDigits}</Text>
+                                                    <Text className="text-xs text-gray-400">{card.cardholderName}</Text>
+                                                </View>
+                                                {selectedCard?.id === card.id && (
+                                                    <Ionicons name="checkmark-circle" size={24} color="#D93800" />
+                                                )}
+                                            </TouchableOpacity>
+                                        ))}
+                                    </>
+                                ) : (
+                                    <View className="bg-gray-50 p-4 rounded-xl mb-3 items-center">
+                                        <Ionicons name="card-outline" size={40} color="#ccc" />
+                                        <Text className="text-gray-400 mt-2">No saved cards</Text>
+                                        <Text className="text-xs text-gray-400">Add a card in your profile</Text>
+                                    </View>
+                                )}
+
+                                {/* Cash on Delivery Option */}
+                                <Text className="text-gray-500 text-sm mb-2 mt-2 font-medium">Other Payment Methods</Text>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        setSelectedCard(null);
+                                        handlePayment('Cash On Delivery');
+                                    }}
+                                    className="bg-green-50 p-4 rounded-xl mb-4 flex-row items-center border-2 border-transparent"
+                                >
+                                    <View className="bg-white p-2 rounded-lg">
+                                        <Ionicons name="cash" size={24} color="green" />
+                                    </View>
+                                    <Text className="ml-3 text-lg font-medium">Cash On Delivery</Text>
+                                </TouchableOpacity>
+                            </ScrollView>
+
+                            <TouchableOpacity
+                                onPress={() => {
+                                    setShowPaymentModal(false);
+                                    setSelectedCard(null);
+                                }}
+                                className="items-center bg-gray-200 p-3 rounded-xl mt-2"
+                            >
+                                <Text className="text-red-500 font-bold">Cancel</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
                 </Modal>

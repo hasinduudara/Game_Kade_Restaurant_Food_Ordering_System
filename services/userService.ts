@@ -1,5 +1,5 @@
 import { db, auth } from './firebaseConfig';
-import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firestore';
 
 // 1. Profile Image Upload Function (ImgBB)
 export const uploadProfileImage = async (uri: string) => {
@@ -82,10 +82,28 @@ export const addCard = async (cardData: any) => {
 
         const userDocRef = doc(db, "users", user.uid);
 
-        // Add Card to Cards Array (using arrayUnion)
-        await updateDoc(userDocRef, {
-            savedCards: arrayUnion(cardData)
-        });
+        // First, check if user document exists and has savedCards field
+        const userDoc = await getDoc(userDocRef);
+
+        if (userDoc.exists()) {
+            const userData = userDoc.data();
+
+            // If savedCards doesn't exist or is not an array, initialize it
+            if (!userData.savedCards || !Array.isArray(userData.savedCards)) {
+                await updateDoc(userDocRef, {
+                    savedCards: [cardData]
+                });
+            } else {
+                // Add Card to Cards Array (using arrayUnion)
+                await updateDoc(userDocRef, {
+                    savedCards: arrayUnion(cardData)
+                });
+            }
+        } else {
+            throw new Error("User document not found");
+        }
+
+        console.log("Card added successfully");
         return true;
     } catch (error) {
         console.error("Error adding card:", error);
